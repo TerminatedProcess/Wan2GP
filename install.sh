@@ -1,4 +1,5 @@
 #!/bin/bash
+clear
 
 # WanGP Installation Script using uv
 # This script installs WanGP with all dependencies using uv instead of conda
@@ -36,36 +37,9 @@ command_exists() {
 
 # Function to detect GPU generation
 detect_gpu() {
-    if command_exists nvidia-smi; then
-        GPU_INFO=$(nvidia-smi --query-gpu=name --format=csv,noheader,nounits 2>/dev/null | head -1)
-        if [[ $GPU_INFO == *"RTX 50"* ]]; then
-            echo "rtx50"
-        elif [[ $GPU_INFO == *"RTX 40"* ]] || [[ $GPU_INFO == *"RTX 30"* ]]; then
-            echo "rtx40"
-        elif [[ $GPU_INFO == *"RTX 20"* ]] || [[ $GPU_INFO == *"RTX 10"* ]] || [[ $GPU_INFO == *"GTX"* ]]; then
-            echo "rtx20"
-        else
-            echo "unknown"
-        fi
-    else
-        echo "none"
-    fi
+    echo "rtx40"  # RTX 4070 - hardcoded
 }
 
-# Function to install uv if not present
-install_uv() {
-    if ! command_exists uv; then
-        print_status "Installing uv..."
-        curl -LsSf https://astral.sh/uv/install.sh | sh
-        source $HOME/.cargo/env
-        if ! command_exists uv; then
-            print_error "Failed to install uv. Please install manually: https://docs.astral.sh/uv/getting-started/installation/"
-            exit 1
-        fi
-    else
-        print_success "uv is already installed"
-    fi
-}
 
 # Function to create virtual environment
 create_venv() {
@@ -75,10 +49,12 @@ create_venv() {
     if [ -d ".venv" ]; then
         print_warning "Removing existing .venv directory..."
         rm -rf .venv
+        print_status "Previous environment removed. Please run the script again."
+        exit 0
     fi
     
-    # Create new virtual environment with Python 3.10.9
-    uv venv --python 3.10.9
+    # Create new virtual environment (use system Python or closest available)
+    uv venv --python 3.10
     
     # Activate virtual environment
     source .venv/bin/activate
@@ -126,35 +102,13 @@ install_optimizations() {
         return
     fi
     
-    # Install Sage Attention
+    # Install Sage Attention (30% speed boost)
     print_status "Installing Sage Attention (30% speed boost)..."
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        uv pip install triton-windows || print_warning "Failed to install triton-windows"
-    fi
-    uv pip install sageattention==1.0.6 || print_warning "Failed to install sageattention"
+    uv pip install sageattention || print_warning "Failed to install sageattention"
     
-    # Install Sage 2 Attention (more complex)
-    if [[ $gpu_type != "rtx50" ]]; then
-        print_status "Installing Sage 2 Attention (40% speed boost)..."
-        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-            uv pip install https://github.com/woct0rdho/SageAttention/releases/download/v2.1.1-windows/sageattention-2.1.1+cu126torch2.6.0-cp310-cp310-win_amd64.whl || print_warning "Failed to install Sage 2 for Windows"
-        else
-            print_status "Installing setuptools for Sage 2 compilation..."
-            uv pip install "setuptools<=75.8.2" --force-reinstall
-            
-            # Clone and build Sage 2 (Linux)
-            if [ ! -d "SageAttention" ]; then
-                git clone https://github.com/thu-ml/SageAttention
-            fi
-            cd SageAttention
-            uv pip install -e . || print_warning "Failed to compile Sage 2 Attention"
-            cd ..
-        fi
-    fi
-    
-    # Flash Attention (optional, can be complex on Windows)
+    # Install Flash Attention (good performance)
     print_status "Installing Flash Attention (optional)..."
-    uv pip install flash-attn==2.7.2.post1 || print_warning "Failed to install flash-attn (this is optional)"
+    uv pip install flash-attn --no-build-isolation || print_warning "Failed to install flash-attn (this is optional)"
 }
 
 # Function to verify installation
@@ -213,8 +167,6 @@ main() {
     GPU_TYPE=$(detect_gpu)
     print_status "Detected GPU type: $GPU_TYPE"
     
-    # Install uv
-    install_uv
     
     # Create virtual environment
     create_venv
@@ -225,13 +177,8 @@ main() {
     # Install dependencies
     install_dependencies
     
-    # Ask user about optimizations
-    echo
-    read -p "Install optional performance optimizations? (Sage Attention, Flash Attention) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        install_optimizations $GPU_TYPE
-    fi
+    # Install performance optimizations
+    install_optimizations $GPU_TYPE
     
     # Verify installation
     verify_installation
