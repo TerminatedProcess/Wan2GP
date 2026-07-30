@@ -1,0 +1,38 @@
+clear
+set -gx ENV_NAME '.venv'
+alias rmenv='rm -rf .envrc $ENV_NAME uv.lock; exit'
+alias mkenv='mkuv $ENV_NAME 3.11'
+alias run='python wgp.py'
+alias stop="sudo pkill -f 'python wgp.py';sleep 3;exit"
+
+function install
+   clear
+   uv pip install pip
+   # Pin all three: unpinned torchaudio resolves to 2.11.0 against torch 2.10.0
+   # and dies with "undefined symbol: torch_dtype_float4_e2m1fn_x2" on import.
+   uv pip install torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu130
+   uv pip install -r requirements.txt
+end
+
+# gitupdate is intentionally NOT defined here — use the global fish function
+# (~/.config/fish/functions/gitupdate.fish), which ff-only's main and rebases
+# mryan on top. A local definition would shadow it on dir-entry.
+
+function linkfolders
+   rmsymlinks
+
+   # make symlinks
+   ln -s '/mnt/llm/Wan2GP/ckpts' .
+   ln -s '/mnt/llm/Wan2GP/loras' .
+   ln -s '/mnt/llm/Wan2GP/loras_flux' .
+   ln -s '/mnt/llm/Wan2GP/loras_hunyuan' .
+   ln -s '/mnt/llm/Wan2GP/loras_hunyuan_i2v' .
+   ln -s '/mnt/llm/Wan2GP/loras_i2v' .
+   ln -s '/mnt/llm/Wan2GP/loras_ltxv' .
+   ln -s '/mnt/llm/Wan2GP/loras_qwen' .
+   ln -s '/mnt/llm/Wan2GP/loras_tts' .
+
+   # outputs
+   mkdir -p /mnt/llm/outputs/wan2gp/outputs
+   ln -s '/mnt/llm/outputs/wan2gp/outputs' .
+end

@@ -40,10 +40,15 @@ outputs/
 outputs2/
 gradio_outputs/
 ckpts/
-loras/
-loras_i2v/
+loras*/
 tmp/
 /settings/
+
+# fork-local: plugin manager clones its own repos in here; never commit them
+plugins/wan2gp-*/
+
+# fork-local: project shell aliases (line 1's `.*` would otherwise hide it)
+!.salias
 
 wgp_config.json
 plugins_local.json
