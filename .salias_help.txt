@@ -1,0 +1,16 @@
+PYTHON ENVIRONMENT (PYTHON_VERSION) - rmenv, mkenv, install
+
+ENVIRONMENT
+  mkenv             Create .venv (uv, PYTHON_VERSION) and .envrc
+  install           Install torch cu130 + requirements, then fixenv
+  rmenv             Delete .envrc, .venv, uv.lock and exit the shell
+  fixenv            Re-add 'unset LD_LIBRARY_PATH' to .envrc, direnv allow
+
+SERVICE (wan-gpt.service, port 7860)
+  run               Start the wan-gpt service
+  stop              Stop the wan-gpt service
+  restart           Restart the wan-gpt service
+  sstatus           Show service status
+  slog              Last 50 log lines
+  slogf             Follow the log
+  runf              Run wgp.py in this shell instead (for debugging startup)
