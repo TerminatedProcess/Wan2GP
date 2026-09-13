@@ -1,0 +1,75 @@
+# Wan2GP (WanGP) - Project aliases and functions
+# All commands defined here, sourced by .salias
+# Run 'help' to see all available commands
+
+# ── Environment ──
+set -gx ENV_NAME '.venv'
+set -gx PYTHON_VERSION '3.11.14'
+
+# ── Python Environment ──
+# Deliberately NOT using the repo's setup.py / scripts/install.sh: setup.py runs
+# `uv pip install` without --no-config, so the global ~/.config/uv/uv.toml
+# `exclude-newer = "7 days"` applies and silently installs nothing (see install).
+alias rmenv='rm -rf .envrc $ENV_NAME uv.lock; exit'
+alias mkenv='mkuv $ENV_NAME $PYTHON_VERSION'
+
+function install
+   clear
+   # --no-config lifts the global ~/.config/uv/uv.toml `exclude-newer = "7 days"`
+   # supply-chain cutoff, which otherwise makes this project uninstallable:
+   #   1. uv drops every file from an index that serves no upload dates, and
+   #      neither download.pytorch.org nor the ort-cuda nightly feed at the top
+   #      of requirements.txt has them -- so torch resolves to nothing.
+   #   2. upstream tracks mmgp closely; a release published today is inside the
+   #      7-day blackout.
+   # Pushing --exclude-newer to a future date does NOT fix (1) -- missing upload
+   # dates are excluded regardless of the cutoff. Only --no-config works.
+   uv pip install --no-config pip
+   # Pin all three as a matched set -- torchvision/torchaudio are built against a
+   # specific torch ABI, and letting either float resolves to a newer build that
+   # fails on import with an undefined-symbol error.
+   uv pip install --no-config torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu130
+   uv pip install --no-config -r requirements.txt
+   fixenv
+end
+
+function fixenv
+   # rmenv deletes .envrc and mkuv regenerates it WITHOUT this line. Without it
+   # /opt/cuda's libcublasLt 13.6 shadows torch's vendored 13.1 (torch's wheels
+   # use DT_RUNPATH, which loses to LD_LIBRARY_PATH) and the FIRST denoise step
+   # dies with CUBLAS_STATUS_NOT_INITIALIZED -- looks like a model bug, isn't.
+   if not grep -q 'unset LD_LIBRARY_PATH' .envrc
+      echo 'unset LD_LIBRARY_PATH' >> .envrc
+   end
+   direnv allow .
+end
+
+# ── Service (systemd: wan-gpt.service, PortHub lease 7860, group wan2gp) ──
+# Acts on this ONE unit, not the whole wan2gp group -- use `svcgroup wan2gp ...`
+# or the dashboard at :8090 if you want the group.
+alias run='systemctl --user start wan-gpt.service'
+alias stop='systemctl --user stop wan-gpt.service'
+alias restart='systemctl --user restart wan-gpt.service'
+# 'status' is a fish reserved keyword and cannot be an alias -- hence sstatus.
+alias sstatus='systemctl --user status wan-gpt.service --no-pager'
+alias slog='journalctl --user -u wan-gpt.service --no-pager -n 50'
+alias slogf='journalctl --user -u wan-gpt.service -f'
+
+# Foreground run in this shell -- for debugging startup errors the service hides.
+# LD_LIBRARY_PATH unset here too: direnv covers interactive shells, but this
+# calls the venv python directly and must not inherit /opt/cuda/lib64.
+function runf
+   clear
+   env -u LD_LIBRARY_PATH ./$ENV_NAME/bin/python wgp.py $argv
+end
+
+# gitupdate is intentionally NOT defined here — use the global fish function
+# (~/.config/fish/functions/gitupdate.fish), which ff-only's main and rebases
+# mryan on top. A local definition would shadow it on dir-entry.
+
+# ── Help ──
+# Relative path: .salias_f is always sourced with the project dir as PWD.
+function help
+    clear
+    sed "s/PYTHON_VERSION/$PYTHON_VERSION/" ./.salias_help.txt
+end
