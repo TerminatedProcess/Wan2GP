@@ -2536,9 +2536,24 @@ def get_lora_dir(model_type):
     if get_dir is None:
         raise Exception("loras unknown")
 
-    lora_key = get_dir(base_model_type)
+    lora_root = get_lora_root()
+    # Core handlers take (base_model_type) and return a subfolder key. Some model
+    # plugins were written against an older contract taking
+    # (base_model_type, args, lora_root) and returning a full path -- e.g.
+    # wan2gp-krea2-identity-edit and wan2gp-stable-diffusion-1-4. Calling those
+    # with one argument raises TypeError and kills startup outright whenever such
+    # a model is the last-selected one. resolve_lora_dir passes an absolute path
+    # through unchanged, so honouring both signatures is safe.
+    try:
+        required = [p for p in inspect.signature(get_dir).parameters.values()
+                    if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) and p.default is p.empty]
+        legacy_signature = len(required) >= 3
+    except (TypeError, ValueError):
+        legacy_signature = False
+
+    lora_key = get_dir(base_model_type, args, lora_root) if legacy_signature else get_dir(base_model_type)
     if lora_key is None: raise Exception("loras unknown")
-    return resolve_lora_dir(lora_key, get_lora_root(), args.lora_config)
+    return resolve_lora_dir(lora_key, lora_root, args.lora_config)
 
 attention_modes_installed = get_attention_modes()
 attention_modes_supported = get_supported_attention_modes()

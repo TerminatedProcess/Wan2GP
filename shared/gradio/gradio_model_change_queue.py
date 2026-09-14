@@ -33,6 +33,26 @@ _REPLACEMENTS = {
 }
 
 
+def _walk_tail(app, head):
+    """Follow trigger_after links from head to the end of its chain.
+
+    Returns (tail, length). Upstream assumed each node had exactly one child and
+    destructured with `[child] = children`; a plugin can legitimately chain its
+    own handler off the same node, so prefer the first real child instead. A
+    `fn is None` child is a JS-only continuation and still terminates the walk,
+    exactly as before.
+    """
+    tail, length = head, 0
+    while True:
+        children = [fn for fn in app.fns.values() if fn.trigger_after == tail._id]
+        real = [fn for fn in children if fn.fn is not None]
+        if not real:
+            break
+        tail = real[0]
+        length += 1
+    return tail, length
+
+
 def _prepare(app):
     if not hasattr(app, '_wangp_model_switch_acks'):
         app._wangp_model_switch_acks = {}
@@ -40,12 +60,16 @@ def _prepare(app):
         if target.elem_id != 'wangp_model_choice_target' or target._id in app._wangp_model_switch_acks:
             continue
         parents = {fn.trigger_after for fn in app.fns.values()}
-        [tail] = [fn for fn in app.fns.values() if (target._id, 'change') in fn.targets and fn._id in parents]
-        while children := [fn for fn in app.fns.values() if fn.trigger_after == tail._id]:
-            [child] = children
-            if child.fn is None:
-                break
-            tail = child
+        candidates = [fn for fn in app.fns.values() if (target._id, 'change') in fn.targets and fn._id in parents]
+        if not candidates:
+            continue
+        # Upstream did `[tail] = candidates`, which raises ValueError the moment a
+        # plugin registers its own .change() on this component -- e.g.
+        # MiniMaxH3Mod-for-WanGP's inline RefMods panel visibility toggle. That
+        # killed startup outright. Pick the longest chain instead: Wan2GP's own
+        # model-switch handler refreshes the entire form, so it always chains
+        # further than a plugin's single-step listener.
+        tail = max((_walk_tail(app, fn) for fn in candidates), key=lambda pair: pair[1])[0]
         # Gradio dispatches this frontend-only continuation after its pending
         # output updates settle. It adds no HTTP request or wait to a single swap.
         _, ack = app.default_config.set_event_trigger([EventListenerMethod(None, 'then')], None, None, None, js='()=>{}', trigger_after=tail._id, queue=False, api_name=False)
