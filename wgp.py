@@ -2682,6 +2682,12 @@ else:
     server_config = read_config(config_load_filename)
 
 server_config.setdefault("prompt_enhancer_quantization", "quanto_int8")
+# The defaults literal above only runs when no config file exists, so a config
+# written by an older build never gains keys added since. clear_file_list is
+# read with direct indexing (gallery_update, hybrid_ui, workspace_viewer), so a
+# missing key raises KeyError in _finalize_generation -- the generation thread
+# dies after the media is produced and the UI just stops.
+server_config.setdefault("clear_file_list", 5)
 notifications.apply_defaults(server_config)
 server_config.setdefault(PROMPT_ENHANCER_SPECULATIVE_DECODING_KEY, PROMPT_ENHANCER_SPECULATIVE_DECODING_DEFAULT)
 server_config[LLM_CONFIG_KEY] = normalize_llm_config(server_config)
