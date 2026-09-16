@@ -31,6 +31,69 @@ function install
    uv pip install --no-config torch==2.10.0 torchvision==0.25.0 torchaudio==2.10.0 --index-url https://download.pytorch.org/whl/cu130
    uv pip install --no-config -r requirements.txt
    fixenv
+   installsage
+end
+
+# ── SageAttention 2 (the `sage2` attention mode) ──
+# Deliberately a separate step: it COMPILES CUDA kernels and takes a few minutes,
+# so it is also runnable on its own after a failed or skipped build.
+#
+# requirements.txt does NOT list sageattention -- it is an optional accelerator,
+# so a plain `install` leaves wgp_config.json pointing at a `sage2` that isn't
+# there. That failure is SILENT and costs hours: generate_media hits its
+# "attention mode not installed" branch, sends an info toast, and `return True`,
+# so the queue marks the task SUCCESSFUL and no video is produced -- no
+# traceback, nothing in journalctl, nothing in outputs/.
+#
+# It must be a SOURCE build of thu-ml/SageAttention (2.2.0). PyPI's
+# `sageattention` is 1.0.6, and shared/attention.py gates the mode on
+# version("sageattention").startswith("2"), so the wheel can never enable sage2.
+set -gx SAGE_SRC "$HOME/.cache/wan2gp-build/SageAttention"
+
+function installsage
+   if not test -x /opt/cuda/bin/nvcc
+      echo "installsage: /opt/cuda/bin/nvcc missing -- pacman -S cuda, then rerun."
+      return 1
+   end
+   # --no-build-isolation is REQUIRED: the extension must link against the venv's
+   # own torch 2.10/cu130. With isolation uv builds against a scratch torch it
+   # downloads itself, and the resulting .so fails to import (undefined symbol).
+   # That also means the build deps have to be present in the venv up front.
+   uv pip install --no-config setuptools wheel packaging; or return 1
+   if test -d $SAGE_SRC
+      git -C $SAGE_SRC pull --ff-only
+   else
+      git clone --depth 1 https://github.com/thu-ml/SageAttention.git $SAGE_SRC; or return 1
+   end
+   # Build only this machine's GPU arch -- codegen for every supported
+   # architecture takes roughly ten times as long for kernels we'd never run.
+   set -l cap (nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | string trim)
+   echo "Building SageAttention 2 for compute capability $cap (several minutes)..."
+   # LD_LIBRARY_PATH unset for the same reason as fixenv -- /opt/cuda's libs must
+   # never shadow torch's vendored CUDA, at build time or at run time.
+   # VIRTUAL_ENV is passed explicitly because `env` starts from a bare
+   # environment here and uv would otherwise not know which venv to target.
+   # -std=c++20 is LOAD-BEARING. SageAttention's setup.py compiles at c++17, and
+   # under nvcc 13.3 that combination cannot parse torch 2.10's own headers:
+   #   ATen/core/List_inl.h:202: error: need 'typename' before
+   #   'decltype(...)::difference_type' ... is a dependent scope
+   # The line already HAS `typename`; nvcc's frontend loses it at c++17. The
+   # error names a torch header and appears only after pages of successful ptxas
+   # output, so it reads like a broken toolchain -- it isn't. Bumping to c++20
+   # fixes it outright, on every host gcc (14, 15 and 16 all pass).
+   # *_APPEND_FLAGS are setup.py's own env hooks; the appended -std lands after
+   # its built-in -std=c++17 and the last one wins.
+   env -u LD_LIBRARY_PATH VIRTUAL_ENV=$PWD/$ENV_NAME CUDA_HOME=/opt/cuda \
+       TORCH_CUDA_ARCH_LIST=$cap MAX_JOBS=(nproc) \
+       CXX_APPEND_FLAGS="-std=c++20" NVCC_APPEND_FLAGS="-std=c++20" \
+       uv pip install --no-config --no-build-isolation $SAGE_SRC; or return 1
+   checksage
+end
+
+# Verifies sage2 is SELECTABLE, not merely importable: wgp additionally requires
+# triton and compute capability >= 8.0, and drops the mode silently otherwise.
+function checksage
+   env -u LD_LIBRARY_PATH ./$ENV_NAME/bin/python -c 'import shared.attention as a; m = a.get_supported_attention_modes(); print("attention modes:", m); print("sage2 OK" if "sage2" in m else "sage2 MISSING")'
 end
 
 function fixenv
