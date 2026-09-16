@@ -2,9 +2,11 @@ PYTHON ENVIRONMENT (PYTHON_VERSION) - rmenv, mkenv, install
 
 ENVIRONMENT
   mkenv             Create .venv (uv, PYTHON_VERSION) and .envrc
-  install           Install torch cu130 + requirements, then fixenv
+  install           Install torch cu130 + requirements, fixenv, then installsage
   rmenv             Delete .envrc, .venv, uv.lock and exit the shell
   fixenv            Re-add 'unset LD_LIBRARY_PATH' to .envrc, direnv allow
+  installsage       Build + install SageAttention 2 (the 'sage2' mode, ~mins)
+  checksage         Print the attention modes wgp will actually offer
 
 SERVICE (wan-gpt.service, port 7860)
   run               Start the wan-gpt service
