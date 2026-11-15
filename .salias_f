@@ -129,6 +129,7 @@ end
 # gitupdate is intentionally NOT defined here — use the global fish function
 # (~/.config/fish/functions/gitupdate.fish), which ff-only's main and rebases
 # mryan on top. A local definition would shadow it on dir-entry.
+alias update='gitupdate'
 
 # ── Help ──
 # Relative path: .salias_f is always sourced with the project dir as PWD.
